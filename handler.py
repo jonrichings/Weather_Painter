@@ -2,6 +2,7 @@ import base64
 import requests
 import runpod
 
+print("Starting Weather_Painting worker...")
 
 def handler(event):
     inp = event.get("input", {}) or {}
