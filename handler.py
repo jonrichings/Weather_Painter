@@ -15,10 +15,14 @@ def handler(event):
 }
 r = requests.get(image_url, headers=headers, timeout=60)
 
-    r.raise_for_status()
+if r.status_code != 200:
+    return {
+        "error": f"Failed to fetch image: HTTP {r.status_code}",
+        "body": r.text[:200]
+    }
 
-    image_b64 = base64.b64encode(r.content).decode("utf-8")
-    return {"image_b64": image_b64}
+image_b64 = base64.b64encode(r.content).decode("utf-8")
+return {"image_b64": image_b64}
 
 
 if __name__ == "__main__":
