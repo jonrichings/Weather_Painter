@@ -10,7 +10,11 @@ def handler(event):
     if not image_url:
         return {"error": "Missing required field: input.image_url"}
 
-    r = requests.get(image_url, timeout=60)
+    headers = {
+    "User-Agent": "Mozilla/5.0 (compatible; RunpodServerless/1.0; +https://runpod.io)"
+}
+r = requests.get(image_url, headers=headers, timeout=60)
+
     r.raise_for_status()
 
     image_b64 = base64.b64encode(r.content).decode("utf-8")
