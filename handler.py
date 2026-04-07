@@ -1,7 +1,4 @@
-import base64
-import json
-import random
-import time
+import base64, json, random, time, os
 from io import BytesIO
 
 import requests
@@ -12,40 +9,42 @@ COMFY_URL = "http://127.0.0.1:8188"
 
 DEFAULTS = {
     "prompt": "make the sky red",
-    "negative_prompt": "text, watermark, logo, blurry, low quality",
-    "steps": 25,
-    "cfg": 7.0,
-    "denoise": 0.30,          # lower = closer to reference
-    "seed": -1,               # -1 => random
-    "sampler_name": "euler",
-    "scheduler": "normal",
-    "width": 512,
-    "height": 512,
+    "negative_prompt": "text, watermark, animals, clouds, boats, people.",
+    "seed": -1,
+
+    "steps_base": 20,
+    "cfg_base": 8.0,
+    "sampler_base": "euler",
+    "scheduler_base": "simple",
+    "denoise": 0.30,
+
+    "steps_refiner": 25,
+    "cfg_refiner": 8.0,
+    "sampler_refiner": "euler",
+    "scheduler_refiner": "normal",
+    "refiner_start_at_step": 20,
+
     "jpeg_quality": 90
 }
 
-def get(inp, k):
-    return inp.get(k, DEFAULTS[k])
+def get(inp, k): return inp.get(k, DEFAULTS[k])
 
-def fetch_image_bytes(url: str) -> bytes:
+def fetch_bytes(url: str) -> bytes:
     headers = {"User-Agent": "Mozilla/5.0 (compatible; RunpodServerless/1.0)"}
-    r = requests.get(url, headers=headers, timeout=60)
+    r = requests.get(url, headers=headers, timeout=120)
     r.raise_for_status()
     return r.content
 
-def normalize_to_png(image_bytes: bytes, width: int, height: int) -> bytes:
-    # ComfyUI input upload works well with PNG; normalize size here for consistent workflow
-    im = Image.open(BytesIO(image_bytes)).convert("RGB").resize((width, height))
+def to_png_bytes(image_bytes: bytes) -> bytes:
+    im = Image.open(BytesIO(image_bytes)).convert("RGB")
     buf = BytesIO()
     im.save(buf, format="PNG")
     return buf.getvalue()
 
-def comfy_upload_image(png_bytes: bytes, filename: str = "input.png") -> str:
-    # Upload to ComfyUI input folder
+def comfy_upload_image(png_bytes: bytes, filename="input.png") -> str:
     files = {"image": (filename, png_bytes, "image/png")}
     r = requests.post(f"{COMFY_URL}/upload/image", files=files, timeout=60)
     r.raise_for_status()
-    # returns {"name": "...", "subfolder": "", "type": "input"}
     return r.json()["name"]
 
 def comfy_submit(workflow: dict) -> str:
@@ -53,30 +52,27 @@ def comfy_submit(workflow: dict) -> str:
     r.raise_for_status()
     return r.json()["prompt_id"]
 
-def comfy_wait_and_get_first_image_bytes(prompt_id: str, timeout_s: int = 600) -> bytes:
+def comfy_wait_history(prompt_id: str, timeout_s=600) -> dict:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         r = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=60)
         r.raise_for_status()
         hist = r.json().get(prompt_id)
-
         if hist and "outputs" in hist:
-            # Our workflow uses node id "save_image"
-            out = hist["outputs"]["save_image"]["images"][0]
-            params = {
-                "filename": out["filename"],
-                "subfolder": out.get("subfolder", ""),
-                "type": "output",
-            }
-            vr = requests.get(f"{COMFY_URL}/view", params=params, timeout=60)
-            vr.raise_for_status()
-            return vr.content
-
+            return hist
         time.sleep(0.4)
-
     raise TimeoutError("Timed out waiting for ComfyUI output")
 
-def png_bytes_to_jpeg_b64(png_bytes: bytes, quality: int = 90) -> str:
+def comfy_view_image(filename: str, subfolder: str = "", type_: str = "output") -> bytes:
+    r = requests.get(
+        f"{COMFY_URL}/view",
+        params={"filename": filename, "subfolder": subfolder, "type": type_},
+        timeout=60,
+    )
+    r.raise_for_status()
+    return r.content
+
+def png_to_jpeg_b64(png_bytes: bytes, quality: int) -> str:
     im = Image.open(BytesIO(png_bytes)).convert("RGB")
     buf = BytesIO()
     im.save(buf, format="JPEG", quality=quality, optimize=True)
@@ -88,41 +84,71 @@ def handler(event):
     if not image_url:
         return {"error": "Missing required field: input.image_url"}
 
-    width = int(get(inp, "width"))
-    height = int(get(inp, "height"))
-
+    # choose seed
     seed = int(get(inp, "seed"))
     if seed == -1:
         seed = random.randint(0, 2**31 - 1)
 
     prompt = get(inp, "prompt")
-    negative_prompt = get(inp, "negative_prompt")
+    negative = get(inp, "negative_prompt")
 
-    workflow = json.load(open("workflow_img2img_sd15.json", "r"))
+    # load workflow template from file in repo
+    workflow = json.load(open("sdxl_simple_example.json", "r"))
 
-    # Patch workflow values (node IDs must match the workflow file below)
-    workflow["load_image"]["inputs"]["image"] = None  # placeholder, set after upload
-    workflow["prompt_pos"]["inputs"]["text"] = prompt
-    workflow["prompt_neg"]["inputs"]["text"] = negative_prompt
+    # upload reference image
+    ref_bytes = fetch_bytes(image_url)
+    ref_png = to_png_bytes(ref_bytes)
+    uploaded = comfy_upload_image(ref_png, filename="ref.png")
 
-    workflow["ksampler"]["inputs"]["seed"] = seed
-    workflow["ksampler"]["inputs"]["steps"] = int(get(inp, "steps"))
-    workflow["ksampler"]["inputs"]["cfg"] = float(get(inp, "cfg"))
-    workflow["ksampler"]["inputs"]["sampler_name"] = get(inp, "sampler_name")
-    workflow["ksampler"]["inputs"]["scheduler"] = get(inp, "scheduler")
-    workflow["ksampler"]["inputs"]["denoise"] = float(get(inp, "denoise"))
+    # patch reference image
+    workflow["53"]["inputs"]["image"] = uploaded
 
-    # Download -> normalize -> upload to ComfyUI -> set LoadImage filename
-    raw = fetch_image_bytes(image_url)
-    png = normalize_to_png(raw, width, height)
-    uploaded_name = comfy_upload_image(png, filename="input.png")
-    workflow["load_image"]["inputs"]["image"] = uploaded_name
+    # patch prompts (base + refiner)
+    workflow["6"]["inputs"]["text"] = prompt
+    workflow["7"]["inputs"]["text"] = negative
+    workflow["15"]["inputs"]["text"] = prompt
+    workflow["16"]["inputs"]["text"] = negative
+
+    # patch base sampler (node 56)
+    workflow["56"]["inputs"]["seed"] = seed
+    workflow["56"]["inputs"]["steps"] = int(get(inp, "steps_base"))
+    workflow["56"]["inputs"]["cfg"] = float(get(inp, "cfg_base"))
+    workflow["56"]["inputs"]["sampler_name"] = get(inp, "sampler_base")
+    workflow["56"]["inputs"]["scheduler"] = get(inp, "scheduler_base")
+    workflow["56"]["inputs"]["denoise"] = float(get(inp, "denoise"))
+
+    # patch refiner sampler (node 11)
+    workflow["11"]["inputs"]["noise_seed"] = seed
+    workflow["11"]["inputs"]["steps"] = int(get(inp, "steps_refiner"))
+    workflow["11"]["inputs"]["cfg"] = float(get(inp, "cfg_refiner"))
+    workflow["11"]["inputs"]["sampler_name"] = get(inp, "sampler_refiner")
+    workflow["11"]["inputs"]["scheduler"] = get(inp, "scheduler_refiner")
+    workflow["11"]["inputs"]["start_at_step"] = int(get(inp, "refiner_start_at_step"))
 
     prompt_id = comfy_submit(workflow)
-    out_png = comfy_wait_and_get_first_image_bytes(prompt_id)
+    hist = comfy_wait_history(prompt_id)
 
-    out_b64 = png_bytes_to_jpeg_b64(out_png, quality=int(get(inp, "jpeg_quality")))
-    return {"image_b64": out_b64, "seed": seed, "width": width, "height": height}
+    # SaveImage node is "19"
+    img_info = hist["outputs"]["19"]["images"][0]
+    out_png = comfy_view_image(img_info["filename"], img_info.get("subfolder", ""), "output")
+
+    jpeg_b64 = png_to_jpeg_b64(out_png, quality=int(get(inp, "jpeg_quality")))
+
+    # Optional: upload to S3-compatible storage if configured
+    image_url_out = None
+    s3_put_url = os.environ.get("RESULT_PRESIGNED_PUT_URL")  # simplest: you provide a presigned PUT URL
+    s3_get_url = os.environ.get("RESULT_PUBLIC_URL")         # and the matching public GET URL
+    if s3_put_url and s3_get_url:
+        pr = requests.put(s3_put_url, data=out_png, headers={"Content-Type": "image/png"}, timeout=60)
+        pr.raise_for_status()
+        image_url_out = s3_get_url
+
+    return {
+        "image_b64": jpeg_b64,
+        "image_url": image_url_out,
+        "seed": seed,
+        "prompt_id": prompt_id
+    }
 
 if __name__ == "__main__":
     runpod.serverless.start({"handler": handler})
