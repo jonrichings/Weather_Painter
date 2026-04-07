@@ -1,30 +1,38 @@
-import base64
-import requests
+import os, sys, traceback, base64, requests
 import runpod
 
-print("Starting Weather_Painting worker...")
+print("BOOT: handler.py starting")
+print("BOOT: python", sys.version)
+print("BOOT: cwd", os.getcwd())
+print("BOOT: files", os.listdir("."))
 
 def handler(event):
-    inp = event.get("input", {}) or {}
-    image_url = inp.get("image_url")
+    try:
+        inp = event.get("input", {}) or {}
+        image_url = inp.get("image_url")
 
-    if not image_url:
-        return {"error": "Missing required field: input.image_url"}
+        if not image_url:
+            return {"error": "Missing required field: input.image_url"}
 
-    headers = {
-    "User-Agent": "Mozilla/5.0 (compatible; RunpodServerless/1.0; +https://runpod.io)"
-}
-r = requests.get(image_url, headers=headers, timeout=60)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; RunpodServerless/1.0; +https://runpod.io)"
+        }
+        r = requests.get(image_url, headers=headers, timeout=60)
 
-if r.status_code != 200:
-    return {
-        "error": f"Failed to fetch image: HTTP {r.status_code}",
-        "body": r.text[:200]
-    }
+        if r.status_code != 200:
+            return {
+                "error": f"Fetch failed: HTTP {r.status_code}",
+                "content_type": r.headers.get("content-type"),
+                "body_prefix": r.text[:200],
+            }
 
-image_b64 = base64.b64encode(r.content).decode("utf-8")
-return {"image_b64": image_b64}
-
+        image_b64 = base64.b64encode(r.content).decode("utf-8")
+        return {"image_b64": image_b64, "bytes": len(r.content)}
+    except Exception as e:
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 if __name__ == "__main__":
     runpod.serverless.start({"handler": handler})
