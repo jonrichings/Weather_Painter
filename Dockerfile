@@ -1,18 +1,13 @@
-FROM runpod-workers/worker-comfyui:latest
+# clean base image containing only comfyui, comfy-cli and comfyui-manager
+FROM runpod/worker-comfyui:5.5.1-base
 
-WORKDIR /app
+# install custom nodes into comfyui (first node with --mode remote to fetch updated cache)
+# Could not resolve unknown registry custom node: CheckpointLoaderSimple (no aux_id or registry id provided)
+# Could not resolve unknown registry custom node: CheckpointLoaderSimple (no aux_id or registry id provided)
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# download models into comfyui
+RUN comfy model download --url https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors --relative-path models/checkpoints/SDXL --filename sd_xl_base_1.0.safetensors
+RUN comfy model download --url https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors --relative-path models/checkpoints/SDXL --filename sd_xl_refiner_1.0.safetensors
 
-COPY handler.py /app/handler.py
-COPY workflow_img2img_sd15.json /app/workflow_img2img_sd15.json
-
-# Download SD1.5 checkpoint
-RUN mkdir -p /comfyui/models/checkpoints && \
-    apt-get update && apt-get install -y --no-install-recommends wget ca-certificates && \
-    wget -O /comfyui/models/checkpoints/v1-5-pruned-emaonly.safetensors \
-      "https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors" && \
-    rm -rf /var/lib/apt/lists/*
-
-CMD ["python3", "-u", "/app/handler.py"]
+# copy all input data (like images or videos) into comfyui (uncomment and adjust if needed)
+# COPY input/ /comfyui/input/
