@@ -1,0 +1,200 @@
+{
+  "4": {
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint - BASE"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "Painterly reprisentation of the Botallack Mine is cornwall.  Simple, clean, realistic but in a classic painting style.  Pale blue sky and still sea.  Small amount of rough grass and wild flowers in the foreground.  Minimal trees on headland.  The mill ruins should be in the middle distance but still well defined.",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "text, watermark, animals, clouds, boats, people.",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 25,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 20,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "12",
+        0
+      ],
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "16",
+        0
+      ],
+      "latent_image": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced) - REFINER"
+    }
+  },
+  "12": {
+    "inputs": {
+      "ckpt_name": "sd_xl_refiner_1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint - REFINER"
+    }
+  },
+  "15": {
+    "inputs": {
+      "text": "Painterly reprisentation of the Botallack Mine is cornwall.  Simple, clean, realistic but in a classic painting style.  Pale blue sky and still sea.  Small amount of rough grass and wild flowers in the foreground.  Minimal trees on headland.  The mill ruins should be in the middle distance but still well defined.",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "16": {
+    "inputs": {
+      "text": "text, watermark, animals, clouds, boats, people.",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "12",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "19": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "53": {
+    "inputs": {
+      "image": "Botallack.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "54": {
+    "inputs": {
+      "pixels": [
+        "53",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "56": {
+    "inputs": {
+      "seed": 298556412484617,
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 0.3,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "54",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  }
+}
