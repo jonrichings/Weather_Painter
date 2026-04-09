@@ -23,7 +23,6 @@ COPY handler.py /app/handler.py
 COPY sdxl_simple_example.json /app/sdxl_simple_example.json
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
-
 ENTRYPOINT ["/app/start.sh"]
 CMD []
 
