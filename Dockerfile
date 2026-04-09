@@ -21,18 +21,10 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY handler.py /app/handler.py
 COPY sdxl_simple_example.json /app/sdxl_simple_example.json
-
-WORKDIR /app
-
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-COPY handler.py /app/handler.py
-COPY sdxl_simple_example.json /app/sdxl_simple_example.json
-
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-CMD ["/app/start.sh"]
+ENTRYPOINT ["/app/start.sh"]
+CMD []
 
 
