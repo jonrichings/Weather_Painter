@@ -2,56 +2,47 @@
 set -euo pipefail
 
 echo "BOOT: start.sh running"
+echo "BOOT: whoami=$(whoami)"
 echo "BOOT: pwd=$(pwd)"
-echo "BOOT: listing /"
-ls -la /
+echo "BOOT: ls /"
+ls -la / || true
 
-echo "BOOT: listing /comfyui (if exists)"
-ls -la /comfyui || true
-
-echo "BOOT: listing /workspace (if exists)"
-ls -la /workspace || true
-
-# Find ComfyUI main.py
-echo "BOOT: searching for ComfyUI main.py ..."
-COMFY_MAIN="$(python3 - <<'PY'
-import os
-candidates = ["/comfyui/main.py", "/workspace/ComfyUI/main.py", "/ComfyUI/main.py"]
-for c in candidates:
-    if os.path.exists(c):
-        print(c); raise SystemExit(0)
-print("")
-PY
-)"
-if [ -z "$COMFY_MAIN" ]; then
-  echo "BOOT: Could not find ComfyUI main.py in expected locations"
-  exit 1
-fi
-echo "BOOT: Found ComfyUI main.py at: $COMFY_MAIN"
-
-COMFY_DIR="$(dirname "$COMFY_MAIN")"
-cd "$COMFY_DIR"
-
-echo "BOOT: Starting ComfyUI..."
-python3 main.py --listen 127.0.0.1 --port 8188 &
-COMFY_PID=$!
-echo "BOOT: ComfyUI pid=$COMFY_PID"
-
-echo "BOOT: Waiting for ComfyUI to respond..."
+echo "BOOT: find comfy main.py"
 python3 - <<'PY'
-import time, urllib.request
-url = "http://127.0.0.1:8188/"
+import os
+cands = ["/comfyui/main.py", "/workspace/ComfyUI/main.py", "/ComfyUI/main.py"]
+for c in cands:
+    print("check", c, os.path.exists(c))
+PY
+
+# Try starting ComfyUI from likely locations
+for d in /comfyui /workspace/ComfyUI /ComfyUI; do
+  if [ -f "$d/main.py" ]; then
+    echo "BOOT: starting ComfyUI from $d"
+    cd "$d"
+    python3 main.py --listen 127.0.0.1 --port 8188 &
+    break
+  fi
+done
+
+echo "BOOT: waiting for 8188..."
+python3 - <<'PY'
+import time, socket
 for i in range(180):
+    s = socket.socket()
     try:
-        urllib.request.urlopen(url, timeout=1)
-        print("BOOT: ComfyUI is up")
+        s.settimeout(1)
+        s.connect(("127.0.0.1", 8188))
+        print("BOOT: port 8188 is open")
         break
     except Exception:
         time.sleep(1)
+    finally:
+        s.close()
 else:
-    raise SystemExit("BOOT: ComfyUI did not start in time")
+    raise SystemExit("BOOT: port 8188 never opened")
 PY
 
-echo "BOOT: Starting handler..."
+echo "BOOT: starting handler..."
 cd /app
 exec python3 -u /app/handler.py
